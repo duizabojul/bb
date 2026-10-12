@@ -214,6 +214,7 @@ export const threadChangeMetadataSchema = z
     eventTypes: z.array(threadEventTypeSchema).readonly().optional(),
     timelineSequence: z.number().int().nonnegative().optional(),
     hasPendingInteraction: z.boolean().optional(),
+    lastReadAt: z.number().nullable().optional(),
     projectId: z.string().optional(),
     statusChange: threadStatusChangeMetadataSchema.optional(),
   })
@@ -304,6 +305,7 @@ const threadChangeMetadataLenientSchema = z.object({
     )
     .optional(),
   hasPendingInteraction: z.boolean().optional(),
+  lastReadAt: z.number().nullable().optional().catch(undefined),
   projectId: z.string().optional(),
   statusChange: threadStatusChangeMetadataSchema.optional().catch(undefined),
 });

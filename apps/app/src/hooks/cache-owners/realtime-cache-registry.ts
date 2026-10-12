@@ -21,7 +21,9 @@ import {
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
   getFetchingThreadListQueryKeys,
   isArchivedThreadListQueryKey,
+  updateCachedThread,
   updateCachedThreadListPendingInteractionState,
+  updateCachedThreadListReadState,
   updateCachedThreadListStatusState,
   updateCachedThreadStatusState,
 } from "./query-cache";
@@ -427,6 +429,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   },
   "read-state-changed": {
     flush: "debounced",
+    patch: [patchThreadReadState],
     dirty: [markThreadDetailQueryStale, markThreadListQueriesStale],
   },
   "tabs-changed": {
@@ -628,6 +631,7 @@ interface ExecuteRealtimeDirtyHandlersArgs<
 
 interface ThreadRealtimePatchContext {
   hasPendingInteraction: boolean | undefined;
+  lastReadAt: number | null | undefined;
   queryClient: QueryClient;
   statusChange: ThreadStatusChangeMetadata | undefined;
   threadId: string;
@@ -1042,6 +1046,22 @@ function patchThreadListPendingInteractionState({
     threadId,
     hasPendingInteraction,
   );
+}
+
+function patchThreadReadState({
+  lastReadAt,
+  queryClient,
+  threadId,
+}: ThreadRealtimePatchContext): void {
+  if (lastReadAt === undefined) return;
+  updateCachedThreadListReadState(queryClient, threadId, lastReadAt);
+  updateCachedThread(queryClient, threadId, (thread) => ({
+    ...thread,
+    lastReadAt,
+  }));
+  for (const queryKey of getFetchingThreadListQueryKeys(queryClient)) {
+    queryClient.invalidateQueries({ exact: true, queryKey });
+  }
 }
 
 function patchThreadStatusState({

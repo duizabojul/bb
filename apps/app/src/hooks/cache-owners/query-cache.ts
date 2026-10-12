@@ -717,6 +717,21 @@ export function updateCachedThreadListPendingInteractionState(
   });
 }
 
+export function updateCachedThreadListReadState(
+  queryClient: QueryClient,
+  threadId: string,
+  lastReadAt: number | null,
+): void {
+  applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) => {
+    if (!list.some((thread) => thread.id === threadId)) {
+      return list;
+    }
+    return list.map((thread) =>
+      thread.id === threadId ? { ...thread, lastReadAt } : thread,
+    );
+  });
+}
+
 export function updateCachedThreadListStatusState(
   queryClient: QueryClient,
   threadId: string,

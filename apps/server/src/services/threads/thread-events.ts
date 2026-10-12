@@ -226,6 +226,7 @@ type AppendClientTurnEvent = (args: AppendThreadEventArgs) => number;
 
 interface ThreadReadStateUpdate {
   changed: boolean;
+  lastReadAt: number | null;
   projectId: string;
   threadId: string;
 }
@@ -324,6 +325,7 @@ function applyUserTurnReadForEvent(
 
   return {
     changed: updatedThread.lastReadAt !== previousThread.lastReadAt,
+    lastReadAt: updatedThread.lastReadAt,
     projectId: updatedThread.projectId,
     threadId: updatedThread.id,
   };
@@ -378,6 +380,7 @@ function buildAppendThreadEventNotificationMetadata({
     timelineSequence: sequence,
   };
   if (readStateUpdate?.changed === true) {
+    metadata.lastReadAt = readStateUpdate.lastReadAt;
     metadata.projectId = readStateUpdate.projectId;
   }
   return metadata;

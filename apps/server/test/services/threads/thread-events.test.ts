@@ -346,6 +346,7 @@ describe("thread event appends", () => {
         {
           eventTypes: ["client/turn/requested"],
           timelineSequence: 1,
+          lastReadAt: 2_000,
           projectId: thread.projectId,
         },
       );

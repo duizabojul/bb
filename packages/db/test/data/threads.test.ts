@@ -864,6 +864,37 @@ describe("threads", () => {
     );
   });
 
+  it("sends the new read time with read-state changes", () => {
+    const { db, project } = setup();
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    updateThread(db, spy, thread.id, { lastReadAt: 2_000 });
+    updateThread(db, spy, thread.id, { lastReadAt: null });
+
+    expect(spy.notifyThread).toHaveBeenNthCalledWith(
+      1,
+      thread.id,
+      ["read-state-changed"],
+      { projectId: project.id, lastReadAt: 2_000 },
+    );
+    expect(spy.notifyThread).toHaveBeenNthCalledWith(
+      2,
+      thread.id,
+      ["read-state-changed"],
+      { projectId: project.id, lastReadAt: null },
+    );
+  });
+
   it("creates explicit thread sections with literal slash names", () => {
     const { db } = setup();
 

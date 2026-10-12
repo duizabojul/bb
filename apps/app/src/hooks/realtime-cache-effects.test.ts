@@ -1215,6 +1215,143 @@ describe("createRealtimeCacheEffects", () => {
     },
   );
 
+  it("patches cached read state from notification metadata so other windows update without a refetch", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadKey = threadQueryKey("thr_1");
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const unreadRow = { id: "thr_1", lastReadAt: null, latestAttentionAt: 100 };
+    const otherRow = { id: "thr_2", lastReadAt: null, latestAttentionAt: 50 };
+    queryClient.setQueryData(threadKey, unreadRow);
+    const threadListQueryFn = vi.fn(async () => [unreadRow, otherRow]);
+    const sidebarQueryFn = vi.fn(async () => ({
+      projects: [{ threads: [unreadRow, otherRow] }],
+      personalProject: { threads: [] },
+    }));
+    const observers = [
+      new QueryObserver(queryClient, {
+        queryKey: threadListKey,
+        queryFn: threadListQueryFn,
+        staleTime: Infinity,
+      }),
+      new QueryObserver(queryClient, {
+        queryKey: sidebarNavigationKey,
+        queryFn: sidebarQueryFn,
+        staleTime: Infinity,
+      }),
+    ];
+    const unsubscribers = observers.map((observer) =>
+      observer.subscribe(() => {}),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const sidebarRows = () =>
+      queryClient.getQueryData<{
+        projects: { threads: (typeof unreadRow | typeof otherRow)[] }[];
+      }>(sidebarNavigationKey)?.projects[0]?.threads;
+
+    const emitReadState = (lastReadAt: number | null) => {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { lastReadAt, projectId: "project-1" },
+        changes: ["read-state-changed"],
+      });
+    };
+
+    emitReadState(150);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sidebarRows()?.[0]).toEqual({ ...unreadRow, lastReadAt: 150 });
+    expect(sidebarRows()?.[1]).toBe(otherRow);
+    expect(
+      queryClient.getQueryData<(typeof unreadRow)[]>(threadListKey)?.[0],
+    ).toEqual({ ...unreadRow, lastReadAt: 150 });
+    expect(queryClient.getQueryData(threadKey)).toEqual({
+      ...unreadRow,
+      lastReadAt: 150,
+    });
+
+    emitReadState(null);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sidebarRows()?.[0]).toEqual(unreadRow);
+    expect(queryClient.getQueryData(threadKey)).toEqual(unreadRow);
+
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+    expect(threadListQueryFn).toHaveBeenCalledTimes(1);
+    for (const unsubscribe of unsubscribers) {
+      unsubscribe();
+    }
+    effects.dispose();
+  });
+
+  it("restarts a sidebar fetch already in flight so its snapshot cannot overwrite the patched read state", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    let lastReadAtOnServer: number | null = null;
+    const responses: (() => void)[] = [];
+    const sidebarQueryFn = vi.fn(
+      () =>
+        new Promise<{
+          projects: { threads: { id: string; lastReadAt: number | null }[] }[];
+          personalProject: { threads: never[] };
+        }>((resolve) => {
+          const snapshot = { id: "thr_1", lastReadAt: lastReadAtOnServer };
+          responses.push(() =>
+            resolve({
+              projects: [{ threads: [snapshot] }],
+              personalProject: { threads: [] },
+            }),
+          );
+        }),
+    );
+    const unsubscribe = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationKey,
+      queryFn: sidebarQueryFn,
+      staleTime: Infinity,
+    }).subscribe(() => {});
+    responses.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { projectId: "project-1" },
+      changes: ["title-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    const staleResponse = responses.shift();
+
+    lastReadAtOnServer = 150;
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { lastReadAt: 150, projectId: "project-1" },
+      changes: ["read-state-changed"],
+    });
+    staleResponse?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
+    responses.shift()?.();
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(
+      queryClient.getQueryData<{
+        projects: { threads: { lastReadAt: number | null }[] }[];
+      }>(sidebarNavigationKey)?.projects[0]?.threads[0]?.lastReadAt,
+    ).toBe(150);
+
+    unsubscribe();
+    effects.dispose();
+  });
+
   it("does not refetch active thread queries for read-state changes", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();

@@ -22,6 +22,7 @@ import type {
   JsonObject,
   ReasoningLevel,
   ThreadChangeKind,
+  ThreadChangeMetadata,
   ThreadLifecycleEvent,
   ThreadLifecycleNoopReason,
   ThreadOriginKind,
@@ -1872,9 +1873,9 @@ export function updateThread(
     });
   }
   if (updated && changes.length > 0) {
-    notifier.notifyThread(id, changes, {
-      projectId: existing.projectId,
-    });
+    const metadata: ThreadChangeMetadata = { projectId: existing.projectId };
+    if ("lastReadAt" in input) metadata.lastReadAt = updated.lastReadAt;
+    notifier.notifyThread(id, changes, metadata);
   }
   return updated ?? null;
 }
