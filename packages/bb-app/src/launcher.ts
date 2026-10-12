@@ -4129,6 +4129,16 @@ export async function runBbApp(
   });
   if (!runtimeRecordOwned) {
     warnExistingRuntimeRecord(context.dataDir);
+    // A second server child would boot against the shared database, run the
+    // startup recovery sweep, and only then fail to bind the port.
+    if (await isHealthyServerAnswering(`${context.serverUrl}/health`)) {
+      log(
+        red("✗"),
+        `bb already serves ${cyan(context.serverUrl)} from this data directory`,
+      );
+      process.exitCode = 1;
+      return;
+    }
   }
 
   const processes: ManagedFullStackProcesses = {
